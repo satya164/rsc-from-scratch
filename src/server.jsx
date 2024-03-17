@@ -45,11 +45,86 @@ app.listen(PORT, () => {
 });
 
 function respond(ctx, jsx) {
+  const clientJSX = renderJSXToClientJSX(jsx);
+
+  if (ctx.request.query.jsx != null) {
+    const clientJSXString = JSON.stringify(clientJSX, stringifyJSX);
+
+    ctx.type = 'application/json';
+    ctx.body = clientJSXString;
+
+    return;
+  }
+
+  const clientJSXString = JSON.stringify(clientJSX, stringifyJSX);
   const clientHtml = html`
-    ${renderToString(jsx)}
+    ${renderToString(clientJSX)}
+
+    <script>
+      window.__INITIAL_CLIENT_JSX_STRING__ = ${JSON.stringify(
+        clientJSXString
+      ).replace(/</g, '\\u003c')};
+    </script>
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@canary",
+          "react-dom/client": "https://esm.sh/react-dom@canary/client"
+        }
+      }
+    </script>
     <script type="module" src="/client.js"></script>
   `;
 
   ctx.type = 'text/html';
   ctx.body = clientHtml;
+}
+
+function stringifyJSX(key, value) {
+  if (value === Symbol.for('react.element')) {
+    return '$RE';
+  } else if (typeof value === 'string' && value.startsWith('$')) {
+    return '$' + value;
+  } else {
+    return value;
+  }
+}
+
+function renderJSXToClientJSX(jsx) {
+  if (
+    typeof jsx === 'string' ||
+    typeof jsx === 'number' ||
+    typeof jsx === 'boolean' ||
+    jsx == null
+  ) {
+    return jsx;
+  } else if (Array.isArray(jsx)) {
+    return jsx.map((child) => renderJSXToClientJSX(child));
+  } else if (jsx != null && typeof jsx === 'object') {
+    if (jsx.$$typeof === Symbol.for('react.element')) {
+      if (typeof jsx.type === 'string') {
+        return {
+          ...jsx,
+          props: renderJSXToClientJSX(jsx.props),
+        };
+      } else if (typeof jsx.type === 'function') {
+        const Component = jsx.type;
+        const props = jsx.props;
+        const returnedJsx = Component(props);
+
+        return renderJSXToClientJSX(returnedJsx);
+      } else {
+        throw new Error('Not implemented.');
+      }
+    } else {
+      return Object.fromEntries(
+        Object.entries(jsx).map(([propName, value]) => [
+          propName,
+          renderJSXToClientJSX(value),
+        ])
+      );
+    }
+  } else {
+    throw new Error('Not implemented');
+  }
 }

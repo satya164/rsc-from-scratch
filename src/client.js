@@ -1,8 +1,32 @@
-async function fetchClientHTML(pathname) {
-  const response = await fetch(pathname);
-  const clientHtml = await response.text();
+import { hydrateRoot } from 'react-dom/client';
 
-  return clientHtml;
+const root = hydrateRoot(document, getInitialClientJSX());
+
+function getInitialClientJSX() {
+  const clientJSX = JSON.parse(window.__INITIAL_CLIENT_JSX_STRING__, parseJSX);
+  return clientJSX;
+}
+
+async function fetchClientJSX(pathname) {
+  const url = new URL(pathname, location.href);
+
+  url.searchParams.set('jsx', true);
+
+  const response = await fetch(url.href);
+  const clientJSXString = await response.text();
+  const clientJSX = JSON.parse(clientJSXString, parseJSX);
+
+  return clientJSX;
+}
+
+function parseJSX(key, value) {
+  if (value === '$RE') {
+    return Symbol.for('react.element');
+  } else if (typeof value === 'string' && value.startsWith('$$')) {
+    return value.slice(1);
+  } else {
+    return value;
+  }
 }
 
 let currentPathname = window.location.pathname;
@@ -10,10 +34,10 @@ let currentPathname = window.location.pathname;
 async function navigate(pathname) {
   currentPathname = pathname;
 
-  const clientHtml = await fetchClientHTML(pathname);
+  const clientJSX = await fetchClientJSX(pathname);
 
   if (pathname === currentPathname) {
-    document.body.innerHTML = clientHtml;
+    root.render(clientJSX);
   }
 }
 
