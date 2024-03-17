@@ -30,7 +30,7 @@ router.get('/:path*', async (ctx) => {
   const { default: Document } = await import('./app/_document.jsx');
   const { default: Page } = await import(filepath);
 
-  respond(
+  await respond(
     ctx,
     <Document>
       <Page query={ctx.request.query} />
@@ -44,8 +44,8 @@ app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
 });
 
-function respond(ctx, jsx) {
-  const clientJSX = renderJSXToClientJSX(jsx);
+async function respond(ctx, jsx) {
+  const clientJSX = await renderJSXToClientJSX(jsx);
 
   if (ctx.request.query.jsx != null) {
     const clientJSXString = JSON.stringify(clientJSX, stringifyJSX);
@@ -90,7 +90,7 @@ function stringifyJSX(key, value) {
   }
 }
 
-function renderJSXToClientJSX(jsx) {
+async function renderJSXToClientJSX(jsx) {
   if (
     typeof jsx === 'string' ||
     typeof jsx === 'number' ||
@@ -99,18 +99,18 @@ function renderJSXToClientJSX(jsx) {
   ) {
     return jsx;
   } else if (Array.isArray(jsx)) {
-    return jsx.map((child) => renderJSXToClientJSX(child));
+    return Promise.all(jsx.map((child) => renderJSXToClientJSX(child)));
   } else if (jsx != null && typeof jsx === 'object') {
     if (jsx.$$typeof === Symbol.for('react.element')) {
       if (typeof jsx.type === 'string') {
         return {
           ...jsx,
-          props: renderJSXToClientJSX(jsx.props),
+          props: await renderJSXToClientJSX(jsx.props),
         };
       } else if (typeof jsx.type === 'function') {
         const Component = jsx.type;
         const props = jsx.props;
-        const returnedJsx = Component(props);
+        const returnedJsx = await Component(props);
 
         return renderJSXToClientJSX(returnedJsx);
       } else {
@@ -118,10 +118,12 @@ function renderJSXToClientJSX(jsx) {
       }
     } else {
       return Object.fromEntries(
-        Object.entries(jsx).map(([propName, value]) => [
-          propName,
-          renderJSXToClientJSX(value),
-        ])
+        await Promise.all(
+          Object.entries(jsx).map(async ([propName, value]) => [
+            propName,
+            await renderJSXToClientJSX(value),
+          ])
+        )
       );
     }
   } else {
