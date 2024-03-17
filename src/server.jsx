@@ -58,6 +58,15 @@ app.listen(PORT, () => {
 function respond(ctx, jsx) {
   const clientJSX = renderJSXToClientJSX(jsx);
 
+  if (ctx.request.query.jsx != null) {
+    const clientJSXString = JSON.stringify(clientJSX, stringifyJSX);
+
+    ctx.type = 'application/json';
+    ctx.body = clientJSXString;
+
+    return;
+  }
+
   const clientJSXString = JSON.stringify(clientJSX, stringifyJSX);
   const clientHtml = html`
     ${renderToString(clientJSX)}

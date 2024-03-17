@@ -7,6 +7,18 @@ function getInitialClientJSX() {
   return clientJSX;
 }
 
+async function fetchClientJSX(pathname) {
+  const url = new URL(pathname, location.href);
+
+  url.searchParams.set('jsx', true);
+
+  const response = await fetch(url.href);
+  const clientJSXString = await response.text();
+  const clientJSX = JSON.parse(clientJSXString, parseJSX);
+
+  return clientJSX;
+}
+
 function parseJSX(key, value) {
   if (value === '$RE') {
     return Symbol.for('react.element');
@@ -16,3 +28,45 @@ function parseJSX(key, value) {
     return value;
   }
 }
+
+let currentPathname = window.location.pathname;
+
+async function navigate(pathname) {
+  currentPathname = pathname;
+
+  const clientJSX = await fetchClientJSX(pathname);
+
+  if (pathname === currentPathname) {
+    root.render(clientJSX);
+  }
+}
+
+window.addEventListener(
+  'click',
+  (e) => {
+    if (e.target.tagName !== 'A') {
+      return;
+    }
+
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+      return;
+    }
+
+    const href = e.target.getAttribute('href');
+
+    if (!href.startsWith('/')) {
+      return;
+    }
+
+    e.preventDefault();
+
+    window.history.pushState(null, null, href);
+
+    navigate(href);
+  },
+  true
+);
+
+window.addEventListener('popstate', () => {
+  navigate(window.location.pathname);
+});
