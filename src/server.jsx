@@ -114,6 +114,8 @@ async function respond(ctx, jsx) {
 function stringifyJSX(key, value) {
   if (value === Symbol.for('react.element')) {
     return '$RE';
+  } else if (value === Symbol.for('react.fragment')) {
+    return '$RE_F';
   } else if (value === Symbol.for('react.client.reference')) {
     return '$RE_M';
   } else if (typeof value === 'string' && value.startsWith('$')) {
@@ -137,7 +139,15 @@ async function renderJSXToClientJSX(jsx) {
     return Promise.all(jsx.map((child) => renderJSXToClientJSX(child)));
   } else if (jsx != null && typeof jsx === 'object') {
     if (jsx.$$typeof === Symbol.for('react.element')) {
-      if (typeof jsx.type === 'string') {
+      if (jsx.type === Symbol.for('react.fragment')) {
+        return {
+          ...jsx,
+          props: {
+            ...jsx.props,
+            children: await renderJSXToClientJSX(jsx.props.children),
+          },
+        };
+      } else if (typeof jsx.type === 'string') {
         return {
           ...jsx,
           props: await renderJSXToClientJSX(jsx.props),
