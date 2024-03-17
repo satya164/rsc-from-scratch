@@ -1,22 +1,13 @@
 import React from 'react';
 
-export default function Index() {
-  const pokemons = [
-    { name: 'bulbasaur' },
-    { name: 'ivysaur' },
-    { name: 'venusaur' },
-    { name: 'charmander' },
-    { name: 'charmeleon' },
-    { name: 'charizard' },
-    { name: 'squirtle' },
-    { name: 'wartortle' },
-    { name: 'blastoise' },
-    { name: 'caterpie' },
-  ];
+export default async function Index() {
+  const data = await fetch(
+    'https://pokeapi.co/api/v2/pokemon?limit=10&offset=0'
+  ).then((res) => res.json());
 
   return (
     <ul>
-      {pokemons.map((pokemon) => {
+      {data.results.map((pokemon) => {
         return (
           <li key={pokemon.name}>
             <a href={`/pokemon?name=${pokemon.name}`}>{pokemon.name}</a>
