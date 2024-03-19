@@ -1,4 +1,5 @@
 import React from 'react';
+import Favorite from './favorite.jsx';
 
 export default async function Pokemon({ query }) {
   const data = await fetch(
@@ -11,6 +12,9 @@ export default async function Pokemon({ query }) {
       <h1>
         {query.name} ({data.types.map((type) => type.type.name).join(', ')})
       </h1>
+      <div>
+        <Favorite name={query.name} />
+      </div>
       <img src={data.sprites.front_default} />
     </div>
   );

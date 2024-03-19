@@ -1,9 +1,13 @@
 import Router from '@koa/router';
+import { transform } from 'esbuild';
 import Koa from 'koa';
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { readFile, readdir, stat } from 'node:fs/promises';
+import { register } from 'node:module';
 import { join } from 'node:path';
 import { renderToString } from 'react-dom/server';
+
+register('./loader.js', import.meta.url);
 
 const html = String.raw;
 
@@ -12,11 +16,16 @@ const PORT = 5172;
 const app = new Koa();
 const router = new Router();
 
-router.get('/client.js', (ctx) => {
-  const stream = createReadStream(join(import.meta.dirname, ctx.path));
+router.get('/(.*).(js|jsx)', async (ctx) => {
+  const content = await readFile(join(import.meta.dirname, ctx.path), 'utf8');
+  const transformed = await transform(content, {
+    loader: 'jsx',
+    format: 'esm',
+    target: 'es2020',
+  });
 
   ctx.type = 'text/javascript';
-  ctx.body = stream;
+  ctx.body = transformed.code;
 });
 
 router.get('/:path*', async (ctx) => {
@@ -56,9 +65,28 @@ async function respond(ctx, jsx) {
     return;
   }
 
+  const files = await readdir(join(import.meta.dirname, 'app'));
+  const imports = await Promise.all(
+    files.map((file) => import(join(import.meta.dirname, 'app', file)))
+  );
+
+  const modules = imports.reduce((acc, mod, i) => {
+    if (mod.default?.$$typeof === Symbol.for('react.client.reference')) {
+      acc += `
+        import $${i} from './${mod.default.filename}';
+
+        window.__CLIENT_MODULES__['${mod.default.filename}'] = $${i};
+      `;
+    }
+
+    return acc;
+  }, `window.__CLIENT_MODULES__ = {};`);
+
   const clientJSXString = JSON.stringify(clientJSX, stringifyJSX);
   const clientHtml = html`
-    ${renderToString(clientJSX)}
+    ${renderToString(
+      await storage.run({ ssr: true }, () => renderJSXToClientJSX(jsx))
+    )}
 
     <script>
       window.__INITIAL_CLIENT_JSX_STRING__ = ${JSON.stringify(
@@ -73,6 +101,9 @@ async function respond(ctx, jsx) {
         }
       }
     </script>
+    <script type="module">
+      ${modules};
+    </script>
     <script type="module" src="/client.js"></script>
   `;
 
@@ -83,12 +114,16 @@ async function respond(ctx, jsx) {
 function stringifyJSX(key, value) {
   if (value === Symbol.for('react.element')) {
     return '$RE';
+  } else if (value === Symbol.for('react.client.reference')) {
+    return '$RE_M';
   } else if (typeof value === 'string' && value.startsWith('$')) {
     return '$' + value;
   } else {
     return value;
   }
 }
+
+const storage = new AsyncLocalStorage();
 
 async function renderJSXToClientJSX(jsx) {
   if (
@@ -113,6 +148,16 @@ async function renderJSXToClientJSX(jsx) {
         const returnedJsx = await Component(props);
 
         return renderJSXToClientJSX(returnedJsx);
+      } else if (jsx.type.$$typeof === Symbol.for('react.client.reference')) {
+        const ssr = storage.getStore()?.ssr;
+
+        if (!ssr) {
+          return jsx;
+        }
+
+        const m = await import(`./${jsx.type.filename}?original`);
+
+        return { ...jsx, type: m[jsx.type.name] };
       } else {
         throw new Error('Not implemented.');
       }

@@ -24,6 +24,8 @@ function parseJSX(key, value) {
     return Symbol.for('react.element');
   } else if (typeof value === 'string' && value.startsWith('$$')) {
     return value.slice(1);
+  } else if (value?.$$typeof === '$RE_M') {
+    return window.__CLIENT_MODULES__[value.filename];
   } else {
     return value;
   }
